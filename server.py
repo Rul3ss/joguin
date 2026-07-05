@@ -3,6 +3,7 @@ import time
 import math
 import random
 import pygame
+import json
 
 # ----------------------------------------------------------------------
 # CONFIGURAÇÃO
@@ -148,47 +149,53 @@ def poll_network():
             break
         except OSError:
             break
-        handle_packet(data.decode("utf-8", errors="ignore").strip(), addr)
+        handle_packet(data.decode("utf-8", errors="ignore"), addr)
 
 
 def handle_packet(msg, addr):
-    parts = msg.split(",")
-    if not parts:
+    line = msg.strip()
+    if not line:
         return
-    cmd = parts[0]
+    
+    try:
+        data = json.loads(line)
+        cmd = str(data.get("cmd", "")).upper()
 
-    if cmd == "HELLO":
-        p = STATE.add_player(addr)
-        if p is None:
-            send(addr, "FULL")
-        else:
-            send(addr, f"WELCOME,{p.id},{p.team},{int(p.x)},{int(p.y)}")
+        if cmd == "HELLO":
+            p = STATE.add_player(addr)
+            if p is None:
+                send(addr, json.dumps({"cmd": "FULL"}))
+            else:
+                send(addr, json.dumps({
+                    "cmd": "WELCOME",
+                    "pid": p.id,
+                    "team": p.team,
+                    "x": int(p.x),
+                    "y": int(p.y)
+                }))
+        elif cmd == "INPUT":
+            pid = int(data.get("pid"))
+            jx = float(data.get("jx"))
+            jy = float(data.get("jy"))
+            kick = int(data.get("kick"))
+            p = STATE.players.get(pid)
+            if not p:
+                return
+            p.addr = addr  # atualiza endereço, caso tenha mudado
+            p.touch()
+            apply_input(p, jx, jy, kick)
 
-    elif cmd == "INPUT":
-        # INPUT,<id>,<jx>,<jy>,<kick0ou1>
-        try:
-            pid = int(parts[1])
-            jx = float(parts[2])
-            jy = float(parts[3])
-            kick = int(parts[4])
-        except (IndexError, ValueError):
-            return
-        p = STATE.players.get(pid)
-        if not p:
-            return
-        p.addr = addr  # atualiza endereço, caso tenha mudado
-        p.touch()
-        apply_input(p, jx, jy, kick)
-
-    elif cmd == "BYE":
-        try:
-            pid = int(parts[1])
-        except (IndexError, ValueError):
-            return
-        if pid in STATE.players:
-            if STATE.ball.owner == pid:
-                STATE.ball.owner = None
-            del STATE.players[pid]
+        elif cmd == "BYE":
+            try:
+                pid = int(data.get("pid"))
+            except (IndexError, ValueError):
+                return
+            if pid in STATE.players:
+                if STATE.ball.owner == pid:
+                    STATE.ball.owner = None
+                del STATE.players[pid]
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        pass  # ignora mensagens malformadas
 
 
 def apply_input(p, jx, jy, kick):
@@ -419,7 +426,7 @@ def score_goal(team):
     STATE.score[team] += 1
     STATE.match_active = False
     STATE.winner = team
-    broadcast(f"GOAL,{team}")
+    broadcast(json.dumps({"cmd": "GOAL", "team": team}))
 
 
 # ----------------------------------------------------------------------
@@ -427,19 +434,33 @@ def score_goal(team):
 # ----------------------------------------------------------------------
 
 def build_state_message():
-    players_str = ";".join(
-        f"{p.id},{p.team},{int(p.x)},{int(p.y)},{1 if p.has_ball else 0}"
-        for p in STATE.players.values()
-    )
     ball = STATE.ball
     owner = ball.owner if ball.owner is not None else -1
-    msg = (
-        f"STATE,{len(STATE.players)};{players_str};"
-        f"BALL,{int(ball.x)},{int(ball.y)},{owner};"
-        f"SCORE,{STATE.score['A']},{STATE.score['B']};"
-        f"ACTIVE,{1 if STATE.match_active else 0}"
-    )
-    return msg
+    players = [
+        {
+            "id": p.id,
+            "team": p.team,
+            "x": int(p.x),
+            "y": int(p.y),
+            "has_ball": 1 if p.has_ball else 0,
+        }
+        for p in STATE.players.values()
+    ]
+    return json.dumps({
+        "cmd": "STATE",
+        "n_jogadores": len(STATE.players),
+        "players": players,
+        "ball": {
+            "x": int(ball.x),
+            "y": int(ball.y),
+            "owner": owner,
+        },
+        "score": {
+            "A": STATE.score["A"],
+            "B": STATE.score["B"],
+        },
+        "active": 1 if STATE.match_active else 0,
+    })
 
 
 def broadcast_state():
