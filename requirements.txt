@@ -1,1 +1,4 @@
+## instala o pip install pygame-ce se tiver tendo problema e roda o server.py
+
+
 pygame>=2.5
