@@ -205,17 +205,25 @@ def apply_input(p, jx, jy, kick):
         p.facing = (nx, ny)
         p.x += nx * PLAYER_SPEED * DT
         p.y += ny * PLAYER_SPEED * DT
-        p.wander_target = (p.x, p.y)
+        # Atualiza a âncora do wander para onde o jogador parou
+        p.wander_target = (p.x, p.y) 
     else:
+        # Devolvendo a "vida" ao jogador quando não há input do joystick
         wander(p)
 
-    # chute: só dispara na borda de subida (0 -> 1) pra não ficar
-    # recarregando o chute enquanto o botão fica pressionado
+    # chute: só dispara na borda de subida (0 -> 1)
     if kick == 1 and p.last_kick == 0 and p.has_ball and STATE.match_active:
+        
+        # Mantendo a correção 2: a bola nasce "na frente" do jogador para não auto-colidir
+        offset = PLAYER_RADIUS + BALL_RADIUS + 2
+        STATE.ball.x = p.x + p.facing[0] * offset
+        STATE.ball.y = p.y + p.facing[1] * offset
+        
         STATE.ball.vx = p.facing[0] * BALL_KICK_SPEED
         STATE.ball.vy = p.facing[1] * BALL_KICK_SPEED
         STATE.ball.owner = None
         p.has_ball = False
+        
     p.last_kick = kick
 
     clamp_player(p)
