@@ -4,11 +4,28 @@ import math
 import random
 import pygame
 import json
-
+import psutil
 # ----------------------------------------------------------------------
 # CONFIGURAÇÃO
 # ----------------------------------------------------------------------
-HOST = "0.0.0.0"
+def get_local_ip():
+    for interface, addrs in psutil.net_if_addrs().items():
+
+        # Ignora interfaces virtuais comuns
+        if interface.startswith(("vEthernet", "Virtual", "Loopback")):
+            continue
+
+        for addr in addrs:
+            if (
+                addr.family == socket.AF_INET
+                and not addr.address.startswith("127.")
+            ):
+                return addr.address
+
+    return "127.0.0.1"
+
+
+HOST = get_local_ip()
 PORT = 5555
 
 ARENA_W, ARENA_H = 900, 600
